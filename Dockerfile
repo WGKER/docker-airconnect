@@ -24,6 +24,7 @@ COPY ./web /tmp/web
 RUN echo "=== 查看/tmp/web文件 ===" \
     && ls -l /tmp/web \
     && cd /tmp/web \
+    && go mod init webui \
     && CGO_ENABLED=0 GOARCH=$ARCH_VAR go build -v -o /app/web \
     && chmod +x /app/web \
     && rm -rf /tmp/web
