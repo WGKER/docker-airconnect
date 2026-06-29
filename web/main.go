@@ -225,7 +225,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			msg = "❌ 保存失败"
 		} else {
 			msg = "✅ 保存成功，服务已自动重启生效"
-			restartAirConnect()
+			restartContainer()
 		}
 	}
 
