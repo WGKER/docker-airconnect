@@ -60,7 +60,6 @@ const htmlTemplate = `
             padding:12px;
             max-width:700px;
             margin:0 auto;
-            /* 手机基础字体优化 */
             font-size:14px;
         }
         .card {
@@ -89,11 +88,22 @@ const htmlTemplate = `
             align-items:center;
             padding:12px 6px;
             border-bottom:1px solid #f1f1f1;
+            gap:10px;
         }
-        .name {
+        .name-text {
             font-size:14px;
             color:#2d3748;
             font-weight:500;
+            cursor:pointer;
+            flex:1;
+        }
+        .name-input {
+            flex:1;
+            padding:4px 6px;
+            font-size:14px;
+            border:1px solid #3498db;
+            border-radius:4px;
+            outline:none;
         }
         .save {
             width:100%;
@@ -106,7 +116,6 @@ const htmlTemplate = `
             margin-top:16px;
             cursor:pointer;
             font-weight:bold;
-            /* 手机增大点击区域 */
             min-height:48px;
         }
         .save:hover {background:#2980b9;}
@@ -125,7 +134,6 @@ const htmlTemplate = `
             position:relative;
             width:46px;
             height:24px;
-            /* 手机开关缩小适配 */
             flex-shrink:0;
         }
         .toggle input {opacity:0; width:0; height:0;}
@@ -174,7 +182,7 @@ const htmlTemplate = `
         <form id="configForm" method="post">
             <h2>🌍 全局转换</h2>
             <div class="item">
-                <span class="name">扫描开关</span>
+                <span class="name-text">扫描开关</span>
                 <label class="toggle">
                     <input id="global_enabled" type="checkbox" name="global_enabled" {{if eq .Config.Common.Enabled 1}}checked{{end}}>
                     <span class="slider"></span>
@@ -182,8 +190,10 @@ const htmlTemplate = `
             </div>
             <h2>🎵 音箱分控</h2>
             {{range $index, $device := .Config.Devices}}
-            <div class="item">
-                <span class="name">{{$device.Name}}</span>
+            <div class="item" data-index="{{$index}}">
+                <span class="name-text" data-idx="{{$index}}">{{$device.Name}}</span>
+                <!-- 隐藏输入框，同步编辑后的名称用于提交 -->
+                <input type="hidden" name="device_name_{{$index}}" class="hidden-name" value="{{$device.Name}}">
                 <label class="toggle">
                     <input class="device-checkbox" data-index="{{$index}}" type="checkbox" name="device_{{$index}}" {{if eq $device.Enabled 1}}checked{{end}}>
                     <span class="slider"></span>
@@ -196,13 +206,13 @@ const htmlTemplate = `
     <div class="version">AirConnect 版本：{{.Version}}</div>
 
 <script>
-// 页面加载完成后记录原始状态快照
 let originState = {
     global: false,
-    devices: []
+    devices: [],
+    names: []
 };
 window.addEventListener('DOMContentLoaded', function(){
-    // 提示文字3秒自动淡出消失
+    // 提示3秒自动消失
     const msgBox = document.querySelector('.msg');
     if(msgBox){
         setTimeout(()=>{
@@ -211,64 +221,94 @@ window.addEventListener('DOMContentLoaded', function(){
         }, 3000);
     }
 
-    // 记录全局开关初始状态
+    // 初始化原始状态：开关+音箱名称
     const globalInput = document.getElementById('global_enabled');
     originState.global = globalInput.checked;
+    const deviceItems = document.querySelectorAll('.item[data-index]');
+    deviceItems.forEach(item=>{
+        const idx = item.dataset.index;
+        const check = item.querySelector('.device-checkbox');
+        const nameVal = item.querySelector('.hidden-name').value;
+        originState.devices.push(check.checked);
+        originState.names.push(nameVal);
+    })
 
-    // 记录所有设备勾选初始状态
-    const deviceInputs = document.querySelectorAll('.device-checkbox');
-    deviceInputs.forEach(input => {
-        originState.devices.push(input.checked);
-    });
+    // ========== 点击文字进入编辑模式 ==========
+    document.querySelectorAll('.name-text').forEach(textSpan=>{
+        textSpan.addEventListener('click', function(){
+            const idx = this.dataset.idx;
+            const parent = this.parentElement;
+            const hiddenInput = parent.querySelector('.hidden-name');
+            const currentVal = hiddenInput.value;
+            // 替换文字为输入框
+            const input = document.createElement('input');
+            input.className = 'name-input';
+            input.value = currentVal;
+            // 回车确认
+            input.addEventListener('keydown', e=>{
+                if(e.key === 'Enter') input.blur();
+            })
+            // 失去焦点保存
+            input.addEventListener('blur', ()=>{
+                hiddenInput.value = input.value.trim() || currentVal;
+                // 换回文字
+                const newSpan = document.createElement('span');
+                newSpan.className = 'name-text';
+                newSpan.dataset.idx = idx;
+                newSpan.textContent = hiddenInput.value;
+                newSpan.addEventListener('click', ()=>newSpan.click());
+                parent.replaceChild(newSpan, input);
+            })
+            parent.replaceChild(input, this);
+            input.focus();
+        })
+    })
 
-    // 绑定表单提交拦截事件
+    // 提交拦截
     const form = document.getElementById('configForm');
     form.addEventListener('submit', function(e){
-        e.preventDefault(); // 先阻止原生提交
-
-        // 获取当前最新状态
+        e.preventDefault();
+        // 获取当前全部状态
         let currentGlobal = document.getElementById('global_enabled').checked;
         let currentDevices = [];
-        document.querySelectorAll('.device-checkbox').forEach(input => {
-            currentDevices.push(input.checked);
-        });
+        let currentNames = [];
+        document.querySelectorAll('.device-checkbox').forEach(cb=>{
+            currentDevices.push(cb.checked);
+        })
+        document.querySelectorAll('.hidden-name').forEach(h=>{
+            currentNames.push(h.value);
+        })
 
-        // 对比是否存在修改
+        // 判断是否有修改（开关 或 音箱名称）
         let isChanged = false;
         if(currentGlobal !== originState.global){
             isChanged = true;
         }else{
-            for(let i=0; i<originState.devices.length; i++){
-                if(currentDevices[i] !== originState.devices[i]){
+            for(let i=0;i<originState.devices.length;i++){
+                if(currentDevices[i] !== originState.devices[i] || currentNames[i] !== originState.names[i]){
                     isChanged = true;
                     break;
                 }
             }
         }
 
-        // 无修改：提示并退出
         if(!isChanged){
             alert("未检测到任何配置修改，无需保存。");
             return;
         }
-
-        // 有修改：弹出确认框
         const confirmSave = confirm("确认保存配置并重启服务？重启后页面会短暂断开。");
         if(confirmSave){
-            form.submit(); // 用户确认，执行提交
+            form.submit();
         }
     });
 
-    // 容器重启自动刷新逻辑：每2秒检测页面连通性，断开则重载
+    // 自动刷新检测
     function autoReloadOnRestart() {
         fetch('/', {cache:"no-store"})
             .catch(()=>{
-                // 请求失败=服务重启中，等待1秒刷新页面
                 setTimeout(()=>location.reload(),1000);
-                return;
             });
     }
-    // 每2秒执行一次检测
     setInterval(autoReloadOnRestart, 2000);
 });
 </script>
@@ -276,9 +316,8 @@ window.addEventListener('DOMContentLoaded', function(){
 </html>
 `
 
-// PageData 新增Version字段，用于渲染流水线传入的版本号
 type PageData struct {
-	MsgType string // success / error
+	MsgType string
 	Msg     string
 	Config  *AirUPnP
 	Version string
@@ -302,7 +341,6 @@ func saveConfig(config *AirUPnP) error {
 	return os.WriteFile(configPath, append([]byte(xml.Header), data...), 0644)
 }
 
-// 杀死 s6-svscan 主进程强制全容器重载
 func restartContainer() {
 	fmt.Println("触发全容器服务重载")
 	cmd := exec.Command("pkill", "-f", "s6-svscan")
@@ -313,7 +351,6 @@ func restartContainer() {
 }
 
 func handler(w http.ResponseWriter, r *http.Request, pageVer string) {
-	// 禁止浏览器缓存POST表单，杜绝重复提交弹窗缓存
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
@@ -327,41 +364,46 @@ func handler(w http.ResponseWriter, r *http.Request, pageVer string) {
 	msg := ""
 	msgType := ""
 	if r.Method == http.MethodPost {
+		// 全局开关
 		if r.PostFormValue("global_enabled") != "" {
 			config.Common.Enabled = 1
 		} else {
 			config.Common.Enabled = 0
 		}
 
+		// 遍历所有设备：更新启用状态 + 编辑后的名称
 		for i := range config.Devices {
-			key := fmt.Sprintf("device_%d", i)
-			if r.PostFormValue(key) != "" {
+			ckKey := fmt.Sprintf("device_%d", i)
+			nameKey := fmt.Sprintf("device_name_%d", i)
+			// 开关
+			if r.PostFormValue(ckKey) != "" {
 				config.Devices[i].Enabled = 1
 			} else {
 				config.Devices[i].Enabled = 0
+			}
+			// 音箱新名称
+			newName := r.PostFormValue(nameKey)
+			if newName != "" {
+				config.Devices[i].Name = newName
 			}
 		}
 
 		err := saveConfig(config)
 		if err != nil {
-			// 保存失败：保留页面，展示错误提示
 			msg = "❌ 保存失败"
 			msgType = "error"
 		} else {
-			// 保存成功：重启容器 + 302重定向GET首页，清空POST历史
 			restartContainer()
 			http.Redirect(w, r, "/", http.StatusFound)
 			return
 		}
 	}
 
-	// 捕获模板解析错误，不再忽略
 	tpl, err := template.New("ui").Parse(htmlTemplate)
 	if err != nil {
 		http.Error(w, "模板解析失败: "+err.Error(), 500)
 		return
 	}
-	// 把读取到的版本传入模板渲染
 	tpl.Execute(w, PageData{
 		Config:  config,
 		Msg:     msg,
@@ -371,18 +413,13 @@ func handler(w http.ResponseWriter, r *http.Request, pageVer string) {
 }
 
 func main() {
-	// 从容器环境变量读取流水线传入的版本 APP_VERSION
 	pageVersion := os.Getenv("APP_VERSION")
-	// 兜底值，本地未传参时显示dev
 	if pageVersion == "" {
 		pageVersion = "dev"
 	}
-
-	// 闭包传递版本参数给handler
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		handler(w, r, pageVersion)
 	})
-
 	fmt.Printf("WebUI 已启动 :8087 | 当前版本: %s\n", pageVersion)
 	err := http.ListenAndServe(":8087", nil)
 	if err != nil {
