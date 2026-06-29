@@ -51,22 +51,27 @@ COPY --from=builder /tmp/webui /app/web
 RUN chmod +x /app/web
 
 # 【优化】稳定拉取对应版本AirConnect，不再用grep切割，使用jq精准解析
-RUN if [ "$ARCH_VAR" = "amd64" ]; then ARCH_VAR=linux-x86_64; elif [ "$ARCH_VAR" = "arm64" ]; then ARCH_VAR=linux-aarch64; fi \
-    # 如果流水线传入VERSION，就下载指定版本；否则自动拉最新版
-    && if [ -n "$VERSION" ] && [ "$VERSION" != "null" ]; then \
-        echo "使用流水线指定版本 $VERSION 下载AirConnect"; \
-        curl -s -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/philippe44/AirConnect/releases/tags/$VERSION > release.json; \
-       else \
-        echo "未指定版本，自动拉取最新Release"; \
-        curl -s -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/philippe44/AirConnect/releases/latest > release.json; \
-       fi \
-    && DOWNLOAD_URL=$(jq -r '.assets[] | select(.name | contains("linux")) | .browser_download_url' release.json | head -n1) \
-    && curl -L "$DOWNLOAD_URL" -o airconnect.zip \
-    && unzip airconnect.zip -d /tmp/ \
-    && mv /tmp/airupnp-$ARCH_VAR /usr/bin/airupnp-docker \
-    && mv /tmp/aircast-$ARCH_VAR /usr/bin/aircast-docker \
-    && chmod +x /usr/bin/airupnp-docker /usr/bin/aircast-docker \
-    && rm -rf /tmp/* airconnect.zip release.json
+RUN set -e; \
+if [ "$ARCH_VAR" = "amd64" ]; then ARCH_VAR=linux-x86_64; elif [ "$ARCH_VAR" = "arm64" ]; then ARCH_VAR=linux-aarch64; fi; \
+# 补全v前缀，仓库tag统一v开头
+FULL_TAG="v${VERSION}"; \
+if [ -n "$VERSION" ] && [ "$VERSION" != "null" ]; then \
+    echo "使用流水线指定版本 ${FULL_TAG} 下载AirConnect"; \
+    curl -sf -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/philippe44/AirConnect/releases/tags/${FULL_TAG}" > release.json; \
+else \
+    echo "未指定版本，自动拉取最新Release"; \
+    curl -sf -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/philippe44/AirConnect/releases/latest" > release.json; \
+fi; \
+# 校验json不为空
+if [ ! -s release.json ]; then echo "ERROR: 获取release信息失败"; exit 1; fi; \
+DOWNLOAD_URL=$(jq -r '.assets[] | select(.name | contains("linux")) | .browser_download_url' release.json | head -n1); \
+if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then echo "ERROR: 未找到对应架构安装包"; exit 1; fi; \
+curl -sfL "$DOWNLOAD_URL" -o airconnect.zip; \
+unzip airconnect.zip -d /tmp/; \
+mv /tmp/airupnp-$ARCH_VAR /usr/bin/airupnp-docker; \
+mv /tmp/aircast-$ARCH_VAR /usr/bin/aircast-docker; \
+chmod +x /usr/bin/airupnp-docker /usr/bin/aircast-docker; \
+rm -rf /tmp/* airconnect.zip release.json
 
 # 统一授权web服务全部配置文件
 RUN chmod -R +x /etc/services.d/ \
