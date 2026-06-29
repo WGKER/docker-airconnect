@@ -47,17 +47,19 @@ jobs:
           PLATFORMS=(${{ steps.prepare.outputs.platforms }})
           for plat in "${PLATFORMS[@]}"; do
             arch=${plat#linux/}
-            echo "===== Building $plat ====="
+            arch_safe=${arch//\//_}
+            tag="${IMG}:${VER}-${arch_safe}"
+            echo "===== Building $plat as tag $tag ====="
             docker buildx build \
               --platform ${plat} \
               --build-arg VERSION=${VER} \
               --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
               --build-arg VCS_REF=${GITHUB_SHA::8} \
-              --tag ${IMG}:${VER}-${arch} \
-              --output type=image \
+              --tag $tag \
+              --output type=docker \
               -f ./Dockerfile ./
-            echo "===== Export airconnect-${VER}-${arch}.tar ====="
-            docker save ${IMG}:${VER}-${arch} -o airconnect-${VER}-${arch}.tar
+            echo "===== Export airconnect-${VER}-${arch_safe}.tar ====="
+            docker save $tag -o airconnect-${VER}-${arch_safe}.tar
           done
 
       - name: List local built images
