@@ -61,7 +61,15 @@ const htmlTemplate = `
         .name {font-size:15px; color:#2d3748; font-weight:500;}
         .save {width:100%; background:#3498db; color:white; border:none; padding:14px; border-radius:12px; font-size:16px; margin-top:20px; cursor:pointer; font-weight:bold;}
         .save:hover {background:#2980b9;}
-        .msg {text-align:center; color:#27ae60; margin:14px 0; font-weight:bold;}
+        .msg {
+            text-align:center;
+            margin:14px 0;
+            font-weight:bold;
+            transition: opacity 0.8s ease;
+        }
+        .msg.success {color:#27ae60;}
+        .msg.error {color:#e74c3c;}
+        .msg.fade-out {opacity:0;}
         .toggle {position:relative; width:50px; height:26px;}
         .toggle input {opacity:0; width:0; height:0;}
         .slider {position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background:#ccc; transition:.3s; border-radius:34px;}
@@ -75,7 +83,7 @@ const htmlTemplate = `
     <div class="card">
         <h1>🔊 AirConnect 设置</h1>
         {{if .Msg}}
-        <div class="msg">{{.Msg}}</div>
+        <div class="msg {{.MsgType}}">{{.Msg}}</div>
         {{end}}
         <form id="configForm" method="post">
             <h2>🌍 全局转换</h2>
@@ -108,6 +116,15 @@ let originState = {
     devices: []
 };
 window.addEventListener('DOMContentLoaded', function(){
+    // 提示文字3秒自动淡出消失
+    const msgBox = document.querySelector('.msg');
+    if(msgBox){
+        setTimeout(()=>{
+            msgBox.classList.add('fade-out');
+            setTimeout(()=>msgBox.remove(), 800);
+        }, 3000);
+    }
+
     // 记录全局开关初始状态
     const globalInput = document.getElementById('global_enabled');
     originState.global = globalInput.checked;
@@ -155,6 +172,18 @@ window.addEventListener('DOMContentLoaded', function(){
             form.submit(); // 用户确认，执行提交
         }
     });
+
+    // 容器重启自动刷新逻辑：每2秒检测页面连通性，断开则重载
+    function autoReloadOnRestart() {
+        fetch('/', {cache:"no-store"})
+            .catch(()=>{
+                // 请求失败=服务重启中，等待1秒刷新页面
+                setTimeout(()=>location.reload(),1000);
+                return;
+            });
+    }
+    // 每2秒执行一次检测
+    setInterval(autoReloadOnRestart, 2000);
 });
 </script>
 </body>
@@ -162,8 +191,9 @@ window.addEventListener('DOMContentLoaded', function(){
 `
 
 type PageData struct {
-	Config *AirUPnP
-	Msg    string
+	MsgType string // success / error
+	Msg     string
+	Config  *AirUPnP
 }
 
 func loadConfig() (*AirUPnP, error) {
@@ -187,7 +217,6 @@ func saveConfig(config *AirUPnP) error {
 // 杀死 s6-svscan 主进程强制全容器重载
 func restartContainer() {
 	fmt.Println("触发全容器服务重载")
-	// 静默杀死s6扫描主进程，自动重启所有服务
 	cmd := exec.Command("pkill", "-f", "s6-svscan")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -196,6 +225,11 @@ func restartContainer() {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
+	// 禁止浏览器缓存POST表单，杜绝重复提交弹窗缓存
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+
 	config, err := loadConfig()
 	if err != nil {
 		http.Error(w, "加载配置失败", 500)
@@ -203,6 +237,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msg := ""
+	msgType := ""
 	if r.Method == http.MethodPost {
 		if r.PostFormValue("global_enabled") != "" {
 			config.Common.Enabled = 1
@@ -221,19 +256,36 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 		err := saveConfig(config)
 		if err != nil {
+			// 保存失败：保留页面，展示错误提示
 			msg = "❌ 保存失败"
+			msgType = "error"
 		} else {
-			msg = "✅ 保存成功，服务已自动重启生效"
+			// 保存成功：重启容器 + 302重定向GET首页，清空POST历史
 			restartContainer()
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
 		}
 	}
 
-	tpl, _ := template.New("ui").Parse(htmlTemplate)
-	tpl.Execute(w, PageData{Config: config, Msg: msg})
+	// 捕获模板解析错误，不再忽略
+	tpl, err := template.New("ui").Parse(htmlTemplate)
+	if err != nil {
+		http.Error(w, "模板解析失败: "+err.Error(), 500)
+		return
+	}
+	tpl.Execute(w, PageData{
+		Config:  config,
+		Msg:     msg,
+		MsgType: msgType,
+	})
 }
 
 func main() {
 	http.HandleFunc("/", handler)
 	fmt.Println("WebUI 已启动 :8087")
-	http.ListenAndServe(":8087", nil)
+	err := http.ListenAndServe(":8087", nil)
+	if err != nil {
+		fmt.Printf("Web服务启动异常: %v\n", err)
+		os.Exit(1)
+	}
 }
