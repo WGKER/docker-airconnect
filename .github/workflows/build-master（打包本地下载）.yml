@@ -54,10 +54,10 @@ jobs:
           # 去掉 push=true，仅构建保存在本地runner，不上传仓库
           docker buildx build --output "type=image" ${{ steps.prepare.outputs.buildx_args }}
 
-      - name: Inspect Local Image
+      - name: Check Local Built Images
         if: github.event_name != 'pull_request'
         run: |
-          docker buildx imagetools inspect ${{ steps.prepare.outputs.docker_image }}:${{ steps.prepare.outputs.version }}
+          docker images ${{ steps.prepare.outputs.docker_image }}
 
       # 新增：导出镜像为制品，方便自行下载使用
       - name: Export Docker Image Tar
