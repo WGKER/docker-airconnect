@@ -11,7 +11,7 @@ ENV WEB_PORT=8087
 RUN apt-get update && apt-get install -y \
     libssl3 \
     libssl-dev \
-    unzip
+    unzip \
     # 安装依赖：运行依赖 + golang编译环境
     golang-go
     
