@@ -50,7 +50,7 @@ RUN if [ "$ARCH_VAR" = "amd64" ]; then ARCH_VAR=linux-x86_64; elif [ "$ARCH_VAR"
     && rm -rf /tmp/* airconnect.zip
 
 # 统一授权web服务全部配置文件
-RUN chmod +x /etc/s6-overlay/services.d/web/run \
+RUN chmod +x /etc/services.d/web/run \
     && chmod 755 /app/web
 
 EXPOSE 8087
