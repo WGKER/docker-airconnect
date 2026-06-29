@@ -33,15 +33,10 @@ jobs:
       - name: Prepare build env
         id: prepare
         run: |
-          set -e
           DOCKER_IMAGE=airconnect-web
           VERSION="${{ github.event.inputs.VERSION }}"
-
-          # 无手动输入则自动拉取最新release，使用jq稳定解析
           if [ -z "$VERSION" ]; then
-            echo "未手动指定版本，自动拉取AirConnect最新Release Tag"
-            # 带请求头防限流，jq精准解析tag_name
-            VERSION=$(curl -s -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/philippe44/AirConnect/releases/latest | jq -r '.tag_name')
+            VERSION=$(curl -s https://api.github.com/repos/philippe44/AirConnect/releases/latest | grep tag_name | cut -d '"' -f 4)
           fi
 
           # 兜底校验版本号，为空则终止流水线
