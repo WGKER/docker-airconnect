@@ -43,7 +43,7 @@ jobs:
           arch=${{ matrix.platform }}
           arch_safe=${arch//\//_}
           tag="${DOCKER_IMAGE}:${VERSION}-${arch_safe}"
-          tar_name="airconnect-${VERSION}-${arch_safe}.tar"
+          tar_name="airconnect-web-${VERSION}-${arch_safe}.tar"
 
           echo "docker_image=${DOCKER_IMAGE}" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
@@ -74,5 +74,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           # 制品名称带架构区分，两个完全独立
-          name: airconnect-${{ steps.prepare.outputs.version }}-${{ steps.prepare.outputs.arch_safe }}
+          name: airconnect-web-${{ steps.prepare.outputs.version }}-${{ steps.prepare.outputs.arch_safe }}
           path: ${{ steps.prepare.outputs.tar_name }}
