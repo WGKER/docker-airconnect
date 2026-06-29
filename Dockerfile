@@ -22,7 +22,7 @@ COPY /src /app
 # 复制Go源码到临时目录编译
 COPY ./web /tmp/web
 RUN cd /tmp/web \
-    && CGO_ENABLED=0 GOARCH=$ARCH_VAR go build -o /app/web \
+    && CGO_ENABLED=0 GOARCH=$ARCH_VAR go build -v -o /app/web \
     && chmod +x /app/web \
     && rm -rf /tmp/web
 
