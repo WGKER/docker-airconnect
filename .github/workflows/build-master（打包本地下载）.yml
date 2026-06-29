@@ -1,4 +1,4 @@
-name: Multi-Arch Build - Master（打包本地下载）
+name: Multi-Arch Build - Master
 
 on:
   schedule:
@@ -25,49 +25,48 @@ jobs:
         id: buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Prepare build and tags
+      - name: Prepare build env
         id: prepare
         run: |
           DOCKER_IMAGE=airconnect
-          DOCKER_PLATFORMS=linux/amd64,linux/arm64
-          # linux/arm/v7 removed as deprecated by ls.io
+          PLATFORMS=("linux/amd64" "linux/arm64")
           VERSION="${{ github.event.inputs.VERSION }}"
           if [ -z "$VERSION" ]; then
             VERSION=$(curl -s https://api.github.com/repos/philippe44/AirConnect/releases/latest | grep tag_name | cut -d '"' -f 4)
           fi
 
-          TAGS="--tag ${DOCKER_IMAGE}:${VERSION} --tag ${DOCKER_IMAGE}:latest"
-          
           echo "docker_image=${DOCKER_IMAGE}" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "buildx_args=--platform ${DOCKER_PLATFORMS} \
-            --build-arg VERSION=${VERSION} \
-            --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
-            --build-arg VCS_REF=${GITHUB_SHA::8} \
-            ${TAGS} --file ./Dockerfile ./" >> $GITHUB_OUTPUT
+          echo "platforms=${PLATFORMS[*]}" >> $GITHUB_OUTPUT
 
-      # 已删除：Login to DockerHub 登录推送步骤
-
-      - name: Build Local Image Only (No Push)
+      - name: Build each architecture & export tar
         if: github.event_name != 'pull_request'
         run: |
-          # 去掉 push=true，仅构建保存在本地runner，不上传仓库
-          docker buildx build --output "type=image" ${{ steps.prepare.outputs.buildx_args }}
+          IMG=${{ steps.prepare.outputs.docker_image }}
+          VER=${{ steps.prepare.outputs.version }}
+          PLATFORMS=(${{ steps.prepare.outputs.platforms }})
+          for plat in "${PLATFORMS[@]}"; do
+            arch=${plat#linux/}
+            echo "===== Building $plat ====="
+            docker buildx build \
+              --platform ${plat} \
+              --build-arg VERSION=${VER} \
+              --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+              --build-arg VCS_REF=${GITHUB_SHA::8} \
+              --tag ${IMG}:${VER}-${arch} \
+              --output type=image \
+              -f ./Dockerfile ./
+            echo "===== Export airconnect-${VER}-${arch}.tar ====="
+            docker save ${IMG}:${VER}-${arch} -o airconnect-${VER}-${arch}.tar
+          done
 
-      - name: Check Local Built Images
+      - name: List local built images
         if: github.event_name != 'pull_request'
-        run: |
-          docker images ${{ steps.prepare.outputs.docker_image }}
+        run: docker images ${{ steps.prepare.outputs.docker_image }}
 
-      # 新增：导出镜像为制品，方便自行下载使用
-      - name: Export Docker Image Tar
-        if: github.event_name != 'pull_request'
-        run: |
-          docker save ${{ steps.prepare.outputs.docker_image }}:${{ steps.prepare.outputs.version }} -o airconnect-${{ steps.prepare.outputs.version }}.tar
-
-      - name: Upload Image Artifact
+      - name: Upload all architecture tar packages
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: airconnect-docker-image
+          name: airconnect-docker-images
           path: airconnect-*.tar
