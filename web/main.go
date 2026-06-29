@@ -51,7 +51,7 @@ const htmlTemplate = `
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>AirConnect 设置</title>
+    <title>AirConnect设置</title>
     <style>
         * {box-sizing:border-box; margin:0; padding:0; font-family:Arial, sans-serif;}
         body {background:#f5f7fa; padding:20px; max-width:700px; margin:0 auto;}
@@ -78,12 +78,12 @@ const htmlTemplate = `
         {{if .Msg}}
         <div class="msg">{{.Msg}}</div>
         {{end}}
-        <form method="post">
+        <form id="configForm" method="post">
             <h2>🌍 全局转换</h2>
             <div class="item">
                 <span class="name">扫描开关</span>
                 <label class="toggle">
-                    <input type="checkbox" name="global_enabled" {{if eq .Config.Common.Enabled 1}}checked{{end}}>
+                    <input id="global_enabled" type="checkbox" name="global_enabled" {{if eq .Config.Common.Enabled 1}}checked{{end}}>
                     <span class="slider"></span>
                 </label>
             </div>
@@ -92,7 +92,7 @@ const htmlTemplate = `
             <div class="item">
                 <span class="name">{{$device.Name}}</span>
                 <label class="toggle">
-                    <input type="checkbox" name="device_{{$index}}" {{if eq $device.Enabled 1}}checked{{end}}>
+                    <input class="device-checkbox" data-index="{{$index}}" type="checkbox" name="device_{{$index}}" {{if eq $device.Enabled 1}}checked{{end}}>
                     <span class="slider"></span>
                 </label>
             </div>
@@ -101,6 +101,63 @@ const htmlTemplate = `
         </form>
     </div>
     <div class="version">AirConnect 版本：1.10.1</div>
+
+<script>
+// 页面加载完成后记录原始状态快照
+let originState = {
+    global: false,
+    devices: []
+};
+window.addEventListener('DOMContentLoaded', function(){
+    // 记录全局开关初始状态
+    const globalInput = document.getElementById('global_enabled');
+    originState.global = globalInput.checked;
+
+    // 记录所有设备勾选初始状态
+    const deviceInputs = document.querySelectorAll('.device-checkbox');
+    deviceInputs.forEach(input => {
+        originState.devices.push(input.checked);
+    });
+
+    // 绑定表单提交拦截事件
+    const form = document.getElementById('configForm');
+    form.addEventListener('submit', function(e){
+        e.preventDefault(); // 先阻止原生提交
+
+        // 获取当前最新状态
+        let currentGlobal = document.getElementById('global_enabled').checked;
+        let currentDevices = [];
+        document.querySelectorAll('.device-checkbox').forEach(input => {
+            currentDevices.push(input.checked);
+        });
+
+        // 对比是否存在修改
+        let isChanged = false;
+        if(currentGlobal !== originState.global){
+            isChanged = true;
+        }else{
+            for(let i=0; i<originState.devices.length; i++){
+                if(currentDevices[i] !== originState.devices[i]){
+                    isChanged = true;
+                    break;
+                }
+            }
+        }
+
+        // 无修改：提示并退出
+        if(!isChanged){
+            alert("未检测到任何配置修改，无需保存。");
+            return;
+        }
+
+        // 有修改：弹出确认框
+        const confirmSave = confirm("确认保存配置并重启服务？重启后页面会短暂断开。");
+        if(confirmSave){
+            form.submit(); // 用户确认，执行提交
+        }
+    });
+});
+</script>
 </body>
 </html>
 `
