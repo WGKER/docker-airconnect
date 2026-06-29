@@ -130,26 +130,26 @@ func saveConfig(config *AirUPnP) error {
 
 // 修复版：拆分 stop + start，替代不存在的 s6-rc restart
 func restartAirConnect() {
-	fmt.Println("开始执行 airupnp 重启流程")
+	fmt.Println("开始执行 svc-airupnp 重启流程")
 	// 1. 停止服务
-	cmdStop := exec.Command("s6-rc", "stop", "airupnp")
+	cmdStop := exec.Command("s6-rc", "stop", "svc-airupnp")
 	stopOut, stopErr := cmdStop.CombinedOutput()
 	if stopErr != nil {
-		fmt.Printf("停止airupnp失败: %v, 输出:%s\n", stopErr, string(stopOut))
+		fmt.Printf("停止svc-airupnp失败: %v, 输出:%s\n", stopErr, string(stopOut))
 	} else {
-		fmt.Println("airupnp 停止成功")
+		fmt.Println("svc-airupnp 停止成功")
 	}
 
 	// 等待进程完全退出
 	time.Sleep(800 * time.Millisecond)
 
 	// 2. 启动服务
-	cmdStart := exec.Command("s6-rc", "start", "airupnp")
+	cmdStart := exec.Command("s6-rc", "start", "svc-airupnp")
 	startOut, startErr := cmdStart.CombinedOutput()
 	if startErr != nil {
-		fmt.Printf("启动airupnp失败: %v, 输出:%s\n", startErr, string(startOut))
+		fmt.Printf("启动svc-airupnp失败: %v, 输出:%s\n", startErr, string(startOut))
 	} else {
-		fmt.Println("airupnp 重启完成")
+		fmt.Println("svc-airupnp 重启完成")
 	}
 }
 
