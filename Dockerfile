@@ -38,7 +38,7 @@ RUN if [ "$ARCH_VAR" = "amd64" ]; then ARCH_VAR=linux-x86_64; elif [ "$ARCH_VAR"
     && rm airconnect.zip
 
 # 赋予web服务脚本执行权限
-RUN chmod +x /etc/services.d/web/run
+RUN chmod +x etc/s6-overlay/s6-rc.d/web/run
 
 # 对外声明8087端口（docker run -p 8087:8087 映射）
 EXPOSE 8087
