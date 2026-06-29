@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"time" // 新增延迟所需包
 )
 
 type AirUPnP struct {
@@ -50,7 +51,6 @@ const htmlTemplate = `
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <!-- 手机适配核心视口标签 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AirConnect设置</title>
     <style>
@@ -210,11 +210,8 @@ let originState = {
     names: []
 };
 const submitBtn = document.getElementById('submitBtn');
-let isSaving = false; // 标记是否正在保存重启
-let reloadTimer = null;
-
 window.addEventListener('DOMContentLoaded', function(){
-    // 提示3秒自动消失
+    // 提示3秒自动淡出
     const msgBox = document.querySelector('.msg');
     if(msgBox){
         setTimeout(()=>{
@@ -262,19 +259,15 @@ window.addEventListener('DOMContentLoaded', function(){
         })
     })
 
-    // 表单提交拦截
+    // 表单提交【修复：AJAX异步提交，不卸载页面，轮询正常执行】
     const form = document.getElementById('configForm');
-    form.addEventListener('submit', function(e){
+    form.addEventListener('submit', async function(e){
         e.preventDefault();
         let currentGlobal = document.getElementById('global_enabled').checked;
         let currentDevices = [];
         let currentNames = [];
-        document.querySelectorAll('.device-checkbox').forEach(cb=>{
-            currentDevices.push(cb.checked);
-        })
-        document.querySelectorAll('.hidden-name').forEach(h=>{
-            currentNames.push(h.value);
-        })
+        document.querySelectorAll('.device-checkbox').forEach(cb=>currentDevices.push(cb.checked));
+        document.querySelectorAll('.hidden-name').forEach(h=>currentNames.push(h.value));
 
         let isChanged = false;
         if(currentGlobal !== originState.global){
@@ -295,30 +288,37 @@ window.addEventListener('DOMContentLoaded', function(){
         const confirmSave = confirm("确认保存配置并重启服务？重启后页面会短暂断开。");
         if(!confirmSave) return;
 
-        // 锁定按钮，开启重启检测轮询
+        // 锁定按钮
         submitBtn.disabled = true;
         submitBtn.textContent = "⏳ 保存中，等待服务重启...";
-        isSaving = true;
-        // 开始轮询检测服务状态
-        startReloadCheck();
-        form.submit();
-    });
 
-    // 仅保存时才执行轮询刷新
-    function startReloadCheck() {
-        if(reloadTimer) clearInterval(reloadTimer);
-        reloadTimer = setInterval(function(){
-            fetch('/', {cache:"no-store"})
-            .then(()=>{
-                // 服务恢复，清除定时器刷新页面
-                clearInterval(reloadTimer);
-                location.href = "/";
-            })
-            .catch(()=>{
-                // 服务断开，继续等待
+        // 构造表单数据
+        const formData = new FormData(form);
+        try {
+            // 异步POST提交，页面不刷新
+            const res = await fetch('/', {
+                method: 'POST',
+                body: formData,
+                signal: AbortSignal.timeout(5000)
             });
-        }, 3000);
-    }
+            // 提交成功，开始循环检测服务恢复
+            function tryReload() {
+                fetch('/', {cache:"no-store", signal: AbortSignal.timeout(1500)})
+                .then(()=>{
+                    // 服务恢复，重载页面读取最新配置
+                    location.href = "/";
+                })
+                .catch(()=>{
+                    setTimeout(tryReload, 1500);
+                });
+            }
+            setTimeout(tryReload, 800);
+        } catch (err) {
+            alert("保存请求异常，请稍后重试");
+            submitBtn.disabled = false;
+            submitBtn.textContent = "💾 保存并重启生效";
+        }
+    });
 });
 </script>
 </body>
@@ -332,6 +332,7 @@ type PageData struct {
 	Version string
 }
 
+// loadConfig 每次页面GET实时读取磁盘配置，无缓存
 func loadConfig() (*AirUPnP, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -350,13 +351,17 @@ func saveConfig(config *AirUPnP) error {
 	return os.WriteFile(configPath, append([]byte(xml.Header), data...), 0644)
 }
 
+// 【修复：goroutine异步延迟杀进程，不阻塞HTTP 302响应】
 func restartContainer() {
-	fmt.Println("触发全容器服务重载")
-	cmd := exec.Command("pkill", "-f", "s6-svscan")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Printf("重载触发日志: err=%v, output=%s\n", err, string(out))
-	}
+	fmt.Println("触发全容器服务重载，延迟500ms执行重启")
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		cmd := exec.Command("pkill", "-f", "s6-svscan")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			fmt.Printf("重载触发日志: err=%v, output=%s\n", err, string(out))
+		}
+	}()
 }
 
 func handler(w http.ResponseWriter, r *http.Request, pageVer string) {
@@ -364,6 +369,7 @@ func handler(w http.ResponseWriter, r *http.Request, pageVer string) {
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
 
+	// 每次访问实时读取最新配置文件
 	config, err := loadConfig()
 	if err != nil {
 		http.Error(w, "加载配置失败", 500)
@@ -373,12 +379,14 @@ func handler(w http.ResponseWriter, r *http.Request, pageVer string) {
 	msg := ""
 	msgType := ""
 	if r.Method == http.MethodPost {
+		// 全局开关
 		if r.PostFormValue("global_enabled") != "" {
 			config.Common.Enabled = 1
 		} else {
 			config.Common.Enabled = 0
 		}
 
+		// 同步音箱开关+编辑后的名称
 		for i := range config.Devices {
 			ckKey := fmt.Sprintf("device_%d", i)
 			nameKey := fmt.Sprintf("device_name_%d", i)
@@ -399,7 +407,7 @@ func handler(w http.ResponseWriter, r *http.Request, pageVer string) {
 			msgType = "error"
 		} else {
 			restartContainer()
-			http.Redirect(w, r, "/", http.StatusFound)
+			// 提交成功返回200，前端AJAX接管轮询
 			return
 		}
 	}
