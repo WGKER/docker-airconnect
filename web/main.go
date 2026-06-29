@@ -100,7 +100,7 @@ const htmlTemplate = `
             <button class="save" type="submit">💾 保存并重启生效</button>
         </form>
     </div>
-    <div class="version">AirConnect 版本：1.9.3</div>
+    <div class="version">AirConnect 版本：1.10.1</div>
 </body>
 </html>
 `
