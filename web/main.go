@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"time" // 新增延迟所需包
+	"time"
 )
 
 type AirUPnP struct {
@@ -210,6 +210,8 @@ let originState = {
     names: []
 };
 const submitBtn = document.getElementById('submitBtn');
+const formWrap = document.getElementById('configForm');
+
 window.addEventListener('DOMContentLoaded', function(){
     // 提示3秒自动淡出
     const msgBox = document.querySelector('.msg');
@@ -232,34 +234,34 @@ window.addEventListener('DOMContentLoaded', function(){
         originState.names.push(nameVal);
     })
 
-    // 点击名称切换编辑框
-    document.querySelectorAll('.name-text').forEach(textSpan=>{
-        textSpan.addEventListener('click', function(){
-            const idx = this.dataset.idx;
-            const parent = this.parentElement;
-            const hiddenInput = parent.querySelector('.hidden-name');
-            const currentVal = hiddenInput.value;
-            const input = document.createElement('input');
-            input.className = 'name-input';
-            input.value = currentVal;
-            input.addEventListener('keydown', e=>{
-                if(e.key === 'Enter') input.blur();
-            })
-            input.addEventListener('blur', ()=>{
-                hiddenInput.value = input.value.trim() || currentVal;
-                const newSpan = document.createElement('span');
-                newSpan.className = 'name-text';
-                newSpan.dataset.idx = idx;
-                newSpan.textContent = hiddenInput.value;
-                newSpan.addEventListener('click', ()=>newSpan.click());
-                parent.replaceChild(newSpan, input);
-            })
-            parent.replaceChild(input, this);
-            input.focus();
+    // ========== 修复：事件委托，无限次点击编辑 ==========
+    formWrap.addEventListener('click', function(e){
+        const textSpan = e.target.closest('.name-text');
+        if(!textSpan) return;
+        const idx = textSpan.dataset.idx;
+        const parent = textSpan.parentElement;
+        const hiddenInput = parent.querySelector('.hidden-name');
+        const currentVal = hiddenInput.value;
+
+        const input = document.createElement('input');
+        input.className = 'name-input';
+        input.value = currentVal;
+        input.addEventListener('keydown', ev=>{
+            if(ev.key === 'Enter') input.blur();
         })
+        input.addEventListener('blur', ()=>{
+            hiddenInput.value = input.value.trim() || currentVal;
+            const newSpan = document.createElement('span');
+            newSpan.className = 'name-text';
+            newSpan.dataset.idx = idx;
+            newSpan.textContent = hiddenInput.value;
+            parent.replaceChild(newSpan, input);
+        })
+        parent.replaceChild(input, textSpan);
+        input.focus();
     })
 
-    // 表单提交【修复：AJAX异步提交，不卸载页面，轮询正常执行】
+    // 表单异步提交逻辑
     const form = document.getElementById('configForm');
     form.addEventListener('submit', async function(e){
         e.preventDefault();
@@ -288,29 +290,19 @@ window.addEventListener('DOMContentLoaded', function(){
         const confirmSave = confirm("确认保存配置并重启服务？重启后页面会短暂断开。");
         if(!confirmSave) return;
 
-        // 锁定按钮
         submitBtn.disabled = true;
         submitBtn.textContent = "⏳ 保存中，等待服务重启...";
-
-        // 构造表单数据
         const formData = new FormData(form);
         try {
-            // 异步POST提交，页面不刷新
-            const res = await fetch('/', {
+            await fetch('/', {
                 method: 'POST',
                 body: formData,
                 signal: AbortSignal.timeout(5000)
             });
-            // 提交成功，开始循环检测服务恢复
             function tryReload() {
                 fetch('/', {cache:"no-store", signal: AbortSignal.timeout(1500)})
-                .then(()=>{
-                    // 服务恢复，重载页面读取最新配置
-                    location.href = "/";
-                })
-                .catch(()=>{
-                    setTimeout(tryReload, 1500);
-                });
+                .then(()=>location.href = "/")
+                .catch(()=>setTimeout(tryReload,1500));
             }
             setTimeout(tryReload, 800);
         } catch (err) {
@@ -332,7 +324,6 @@ type PageData struct {
 	Version string
 }
 
-// loadConfig 每次页面GET实时读取磁盘配置，无缓存
 func loadConfig() (*AirUPnP, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -351,7 +342,7 @@ func saveConfig(config *AirUPnP) error {
 	return os.WriteFile(configPath, append([]byte(xml.Header), data...), 0644)
 }
 
-// 【修复：goroutine异步延迟杀进程，不阻塞HTTP 302响应】
+// 异步延迟重启，不阻塞HTTP响应
 func restartContainer() {
 	fmt.Println("触发全容器服务重载，延迟500ms执行重启")
 	go func() {
@@ -369,7 +360,6 @@ func handler(w http.ResponseWriter, r *http.Request, pageVer string) {
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
 
-	// 每次访问实时读取最新配置文件
 	config, err := loadConfig()
 	if err != nil {
 		http.Error(w, "加载配置失败", 500)
@@ -379,14 +369,12 @@ func handler(w http.ResponseWriter, r *http.Request, pageVer string) {
 	msg := ""
 	msgType := ""
 	if r.Method == http.MethodPost {
-		// 全局开关
 		if r.PostFormValue("global_enabled") != "" {
 			config.Common.Enabled = 1
 		} else {
 			config.Common.Enabled = 0
 		}
 
-		// 同步音箱开关+编辑后的名称
 		for i := range config.Devices {
 			ckKey := fmt.Sprintf("device_%d", i)
 			nameKey := fmt.Sprintf("device_name_%d", i)
@@ -407,7 +395,6 @@ func handler(w http.ResponseWriter, r *http.Request, pageVer string) {
 			msgType = "error"
 		} else {
 			restartContainer()
-			// 提交成功返回200，前端AJAX接管轮询
 			return
 		}
 	}
