@@ -130,10 +130,14 @@ func saveConfig(config *AirUPnP) error {
 
 // ✅ 官方镜像原生重启命令（100% 适配 /init s6-rc）
 func restartAirConnect() {
-	// 等待 1 秒确保配置写入完成
 	time.Sleep(1 * time.Second)
-	// 镜像自带的 s6 服务重启命令（官方标准方式）
-	exec.Command("s6-rc", "restart", "airupnp").Run()
+	cmd := exec.Command("s6-rc", "restart", "airupnp")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("重启airupnp失败: %v, 输出: %s\n", err, string(output))
+	} else {
+		fmt.Println("airupnp服务重启成功")
+	}
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
