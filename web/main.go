@@ -46,10 +46,11 @@ type Device struct {
 	Enabled int    `xml:"enabled"`
 }
 
-// 设备实时状态返回结构体
+// 新增Mac字段用于前端精准匹配
 type DevStatus struct {
 	UDN     string `json:"udn"`
 	Name    string `json:"name"`
+	Mac     string `json:"mac"`
 	Playing bool   `json:"playing"`
 }
 
@@ -61,7 +62,7 @@ const htmlTemplate = `
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AirConnect 设置面板</title>
+    <title>AirConnect设置面板</title>
     <style>
         * {box-sizing:border-box; margin:0; padding:0; font-family:system-ui, sans-serif;}
         body {
@@ -202,7 +203,7 @@ const htmlTemplate = `
         <div class="msg {{.MsgType}}">{{.Msg}}</div>
         {{end}}
         <form id="configForm" method="post">
-            <h2>🌍 全局转换开关</h2>
+            <h2>🌍 全局转换</h2>
             <div class="item">
                 <span class="name-text">扫描启用</span>
                 <label class="toggle">
@@ -210,7 +211,7 @@ const htmlTemplate = `
                     <span class="slider"></span>
                 </label>
             </div>
-            <h2>🎵 音箱分控（实时播放状态）</h2>
+            <h2>🎵 音箱分控</h2>
             <div id="devListWrap">
             {{range $index, $device := .Config.Devices}}
             <div class="item" data-index="{{$index}}" data-mac="{{$device.Mac}}">
@@ -287,21 +288,24 @@ window.addEventListener('DOMContentLoaded', function(){
         input.focus();
     })
 
-    // 每2秒拉取一次播放状态，仅刷新状态标签，不干扰编辑
+    // 修复：纯MAC匹配，不再对比名称，改名不影响状态识别
     function refreshDeviceStatus() {
         fetch('/status', {cache:"no-store", signal: AbortSignal.timeout(2000)})
         .then(res=>res.json())
         .then(statusList=>{
+            // 构建mac映射表，一次遍历
+            const macMap = {};
+            statusList.forEach(d=>{
+                macMap[d.Mac] = d.Playing;
+            })
+            // 遍历页面设备匹配
             document.querySelectorAll('.item[data-mac]').forEach(item=>{
                 const mac = item.dataset.mac;
                 const statusSpan = item.querySelector('.status-text');
-                const match = statusList.find(d=>{
-                    const devItem = Array.from(document.querySelectorAll('.item[data-mac]')).find(el=>el.dataset.mac === mac);
-                    return devItem && d.Name === devItem.querySelector('.hidden-name').value;
-                });
-                if(match && match.Playing){
+                const playing = macMap[mac] || false;
+                if(playing){
                     statusSpan.className = "status-text playing";
-                    statusSpan.textContent = "播放中";
+                    statusSpan.textContent = "播放";
                 }else{
                     statusSpan.className = "status-text idle";
                     statusSpan.textContent = "空闲";
@@ -335,10 +339,10 @@ window.addEventListener('DOMContentLoaded', function(){
         }
 
         if(!isChanged){
-            alert("未检测到配置修改，无需保存");
+            alert("未检测到配置修改，无需保存。");
             return;
         }
-        const confirmSave = confirm("确认保存并重启服务？页面会短暂断开");
+        const confirmSave = confirm("确认保存并重启服务？页面会短暂断开。");
         if(!confirmSave) return;
 
         submitBtn.disabled = true;
@@ -360,7 +364,7 @@ window.addEventListener('DOMContentLoaded', function(){
             }
             setTimeout(tryReload, 800);
         } catch (err) {
-            alert("保存请求异常，请重试");
+            alert("保存请求异常，请重试。");
             submitBtn.disabled = false;
             submitBtn.textContent = "💾 保存并重启生效";
             statusTimer = setInterval(refreshDeviceStatus, 2000);
@@ -411,7 +415,7 @@ func restartContainer() {
 	}()
 }
 
-// /status 接口：自动解析日志mac→句柄，判断播放状态（方案1全自动，无需手动填handle）
+// /status 接口：自动解析日志mac→句柄，返回携带Mac用于前端匹配
 func statusHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	conf, err := loadConfig()
@@ -479,6 +483,7 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 		result = append(result, DevStatus{
 			UDN:     dev.UDN,
 			Name:    dev.Name,
+			Mac:     dev.Mac, // 新增MAC返回前端用于匹配
 			Playing: isPlay,
 		})
 	}
