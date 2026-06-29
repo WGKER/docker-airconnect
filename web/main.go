@@ -164,7 +164,6 @@ const htmlTemplate = `
             font-size:11px;
             margin-top:14px;
         }
-        /* 小屏幕手机额外压缩 */
         @media (max-width:480px) {
             body {padding:8px;}
             .card {padding:14px; border-radius:10px;}
@@ -192,7 +191,6 @@ const htmlTemplate = `
             {{range $index, $device := .Config.Devices}}
             <div class="item" data-index="{{$index}}">
                 <span class="name-text" data-idx="{{$index}}">{{$device.Name}}</span>
-                <!-- 隐藏输入框，同步编辑后的名称用于提交 -->
                 <input type="hidden" name="device_name_{{$index}}" class="hidden-name" value="{{$device.Name}}">
                 <label class="toggle">
                     <input class="device-checkbox" data-index="{{$index}}" type="checkbox" name="device_{{$index}}" {{if eq $device.Enabled 1}}checked{{end}}>
@@ -200,7 +198,7 @@ const htmlTemplate = `
                 </label>
             </div>
             {{end}}
-            <button class="save" type="submit">💾 保存并重启生效</button>
+            <button id="submitBtn" class="save" type="submit">💾 保存并重启生效</button>
         </form>
     </div>
     <div class="version">AirConnect 版本：{{.Version}}</div>
@@ -211,6 +209,10 @@ let originState = {
     devices: [],
     names: []
 };
+const submitBtn = document.getElementById('submitBtn');
+let isSaving = false; // 标记是否正在保存重启
+let reloadTimer = null;
+
 window.addEventListener('DOMContentLoaded', function(){
     // 提示3秒自动消失
     const msgBox = document.querySelector('.msg');
@@ -221,7 +223,7 @@ window.addEventListener('DOMContentLoaded', function(){
         }, 3000);
     }
 
-    // 初始化原始状态：开关+音箱名称
+    // 初始化原始开关+名称快照
     const globalInput = document.getElementById('global_enabled');
     originState.global = globalInput.checked;
     const deviceItems = document.querySelectorAll('.item[data-index]');
@@ -233,25 +235,21 @@ window.addEventListener('DOMContentLoaded', function(){
         originState.names.push(nameVal);
     })
 
-    // ========== 点击文字进入编辑模式 ==========
+    // 点击名称切换编辑框
     document.querySelectorAll('.name-text').forEach(textSpan=>{
         textSpan.addEventListener('click', function(){
             const idx = this.dataset.idx;
             const parent = this.parentElement;
             const hiddenInput = parent.querySelector('.hidden-name');
             const currentVal = hiddenInput.value;
-            // 替换文字为输入框
             const input = document.createElement('input');
             input.className = 'name-input';
             input.value = currentVal;
-            // 回车确认
             input.addEventListener('keydown', e=>{
                 if(e.key === 'Enter') input.blur();
             })
-            // 失去焦点保存
             input.addEventListener('blur', ()=>{
                 hiddenInput.value = input.value.trim() || currentVal;
-                // 换回文字
                 const newSpan = document.createElement('span');
                 newSpan.className = 'name-text';
                 newSpan.dataset.idx = idx;
@@ -264,11 +262,10 @@ window.addEventListener('DOMContentLoaded', function(){
         })
     })
 
-    // 提交拦截
+    // 表单提交拦截
     const form = document.getElementById('configForm');
     form.addEventListener('submit', function(e){
         e.preventDefault();
-        // 获取当前全部状态
         let currentGlobal = document.getElementById('global_enabled').checked;
         let currentDevices = [];
         let currentNames = [];
@@ -279,12 +276,11 @@ window.addEventListener('DOMContentLoaded', function(){
             currentNames.push(h.value);
         })
 
-        // 判断是否有修改（开关 或 音箱名称）
         let isChanged = false;
         if(currentGlobal !== originState.global){
             isChanged = true;
         }else{
-            for(let i=0;i<originState.devices.length;i++){
+            for(let i=0; i<originState.devices.length; i++){
                 if(currentDevices[i] !== originState.devices[i] || currentNames[i] !== originState.names[i]){
                     isChanged = true;
                     break;
@@ -297,19 +293,32 @@ window.addEventListener('DOMContentLoaded', function(){
             return;
         }
         const confirmSave = confirm("确认保存配置并重启服务？重启后页面会短暂断开。");
-        if(confirmSave){
-            form.submit();
-        }
+        if(!confirmSave) return;
+
+        // 锁定按钮，开启重启检测轮询
+        submitBtn.disabled = true;
+        submitBtn.textContent = "⏳ 保存中，等待服务重启...";
+        isSaving = true;
+        // 开始轮询检测服务状态
+        startReloadCheck();
+        form.submit();
     });
 
-    // 自动刷新检测
-    function autoReloadOnRestart() {
-        fetch('/', {cache:"no-store"})
+    // 仅保存时才执行轮询刷新
+    function startReloadCheck() {
+        if(reloadTimer) clearInterval(reloadTimer);
+        reloadTimer = setInterval(function(){
+            fetch('/', {cache:"no-store"})
+            .then(()=>{
+                // 服务恢复，清除定时器刷新页面
+                clearInterval(reloadTimer);
+                location.href = "/";
+            })
             .catch(()=>{
-                setTimeout(()=>location.reload(),1000);
+                // 服务断开，继续等待
             });
+        }, 3000);
     }
-    setInterval(autoReloadOnRestart, 2000);
 });
 </script>
 </body>
@@ -364,24 +373,20 @@ func handler(w http.ResponseWriter, r *http.Request, pageVer string) {
 	msg := ""
 	msgType := ""
 	if r.Method == http.MethodPost {
-		// 全局开关
 		if r.PostFormValue("global_enabled") != "" {
 			config.Common.Enabled = 1
 		} else {
 			config.Common.Enabled = 0
 		}
 
-		// 遍历所有设备：更新启用状态 + 编辑后的名称
 		for i := range config.Devices {
 			ckKey := fmt.Sprintf("device_%d", i)
 			nameKey := fmt.Sprintf("device_name_%d", i)
-			// 开关
 			if r.PostFormValue(ckKey) != "" {
 				config.Devices[i].Enabled = 1
 			} else {
 				config.Devices[i].Enabled = 0
 			}
-			// 音箱新名称
 			newName := r.PostFormValue(nameKey)
 			if newName != "" {
 				config.Devices[i].Name = newName
