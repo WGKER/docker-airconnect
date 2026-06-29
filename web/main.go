@@ -50,33 +50,119 @@ const htmlTemplate = `
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
+    <!-- 手机适配核心视口标签 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AirConnect设置</title>
     <style>
         * {box-sizing:border-box; margin:0; padding:0; font-family:Arial, sans-serif;}
-        body {background:#f5f7fa; padding:20px; max-width:700px; margin:0 auto;}
-        .card {background:white; padding:24px; border-radius:16px; margin-bottom:20px; box-shadow:0 2px 12px rgba(0,0,0,0.08);}
-        h1 {color:#2d3748; margin-bottom:24px; text-align:center; font-size:22px;}
-        h2 {color:#4a5568; margin:20px 0 12px; font-size:16px; border-left:4px solid #3498db; padding-left:10px;}
-        .item {display:flex; justify-content:space-between; align-items:center; padding:14px 10px; border-bottom:1px solid #f1f1f1;}
-        .name {font-size:15px; color:#2d3748; font-weight:500;}
-        .save {width:100%; background:#3498db; color:white; border:none; padding:14px; border-radius:12px; font-size:16px; margin-top:20px; cursor:pointer; font-weight:bold;}
+        body {
+            background:#f5f7fa;
+            padding:12px;
+            max-width:700px;
+            margin:0 auto;
+            /* 手机基础字体优化 */
+            font-size:14px;
+        }
+        .card {
+            background:white;
+            padding:16px;
+            border-radius:12px;
+            margin-bottom:16px;
+            box-shadow:0 2px 12px rgba(0,0,0,0.08);
+        }
+        h1 {
+            color:#2d3748;
+            margin-bottom:20px;
+            text-align:center;
+            font-size:20px;
+        }
+        h2 {
+            color:#4a5568;
+            margin:16px 0 10px;
+            font-size:15px;
+            border-left:4px solid #3498db;
+            padding-left:8px;
+        }
+        .item {
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            padding:12px 6px;
+            border-bottom:1px solid #f1f1f1;
+        }
+        .name {
+            font-size:14px;
+            color:#2d3748;
+            font-weight:500;
+        }
+        .save {
+            width:100%;
+            background:#3498db;
+            color:white;
+            border:none;
+            padding:14px;
+            border-radius:10px;
+            font-size:16px;
+            margin-top:16px;
+            cursor:pointer;
+            font-weight:bold;
+            /* 手机增大点击区域 */
+            min-height:48px;
+        }
         .save:hover {background:#2980b9;}
+        .save:disabled {background:#94b8d8; cursor:not-allowed;}
         .msg {
             text-align:center;
-            margin:14px 0;
+            margin:12px 0;
             font-weight:bold;
             transition: opacity 0.8s ease;
+            font-size:14px;
         }
         .msg.success {color:#27ae60;}
         .msg.error {color:#e74c3c;}
         .msg.fade-out {opacity:0;}
-        .toggle {position:relative; width:50px; height:26px;}
+        .toggle {
+            position:relative;
+            width:46px;
+            height:24px;
+            /* 手机开关缩小适配 */
+            flex-shrink:0;
+        }
         .toggle input {opacity:0; width:0; height:0;}
-        .slider {position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background:#ccc; transition:.3s; border-radius:34px;}
-        .slider:before {position:absolute; content:""; height:20px; width:20px; left:3px; bottom:3px; background:white; transition:.3s; border-radius:50%;}
+        .slider {
+            position:absolute;
+            cursor:pointer;
+            top:0; left:0; right:0; bottom:0;
+            background:#ccc;
+            transition:.3s;
+            border-radius:34px;
+        }
+        .slider:before {
+            position:absolute;
+            content:"";
+            height:18px;
+            width:18px;
+            left:3px;
+            bottom:3px;
+            background:white;
+            transition:.3s;
+            border-radius:50%;
+        }
         input:checked + .slider {background:#3498db;}
-        input:checked + .slider:before {transform:translateX(24px);}
-        .version {text-align:center; color:#999; font-size:12px; margin-top:16px;}
+        input:checked + .slider:before {transform:translateX(22px);}
+        .version {
+            text-align:center;
+            color:#999;
+            font-size:11px;
+            margin-top:14px;
+        }
+        /* 小屏幕手机额外压缩 */
+        @media (max-width:480px) {
+            body {padding:8px;}
+            .card {padding:14px; border-radius:10px;}
+            h1 {font-size:18px;}
+            .item {padding:10px 4px;}
+        }
     </style>
 </head>
 <body>
@@ -107,7 +193,7 @@ const htmlTemplate = `
             <button class="save" type="submit">💾 保存并重启生效</button>
         </form>
     </div>
-    <div class="version">AirConnect 版本：1.10.1</div>
+    <div class="version">AirConnect 版本：{{.Version}}</div>
 
 <script>
 // 页面加载完成后记录原始状态快照
@@ -190,10 +276,12 @@ window.addEventListener('DOMContentLoaded', function(){
 </html>
 `
 
+// PageData 新增Version字段，用于渲染流水线传入的版本号
 type PageData struct {
 	MsgType string // success / error
 	Msg     string
 	Config  *AirUPnP
+	Version string
 }
 
 func loadConfig() (*AirUPnP, error) {
@@ -224,7 +312,7 @@ func restartContainer() {
 	}
 }
 
-func handler(w http.ResponseWriter, r *http.Request) {
+func handler(w http.ResponseWriter, r *http.Request, pageVer string) {
 	// 禁止浏览器缓存POST表单，杜绝重复提交弹窗缓存
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
@@ -273,16 +361,29 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "模板解析失败: "+err.Error(), 500)
 		return
 	}
+	// 把读取到的版本传入模板渲染
 	tpl.Execute(w, PageData{
 		Config:  config,
 		Msg:     msg,
 		MsgType: msgType,
+		Version: pageVer,
 	})
 }
 
 func main() {
-	http.HandleFunc("/", handler)
-	fmt.Println("WebUI 已启动 :8087")
+	// 从容器环境变量读取流水线传入的版本 APP_VERSION
+	pageVersion := os.Getenv("APP_VERSION")
+	// 兜底值，本地未传参时显示dev
+	if pageVersion == "" {
+		pageVersion = "dev"
+	}
+
+	// 闭包传递版本参数给handler
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		handler(w, r, pageVersion)
+	})
+
+	fmt.Printf("WebUI 已启动 :8087 | 当前版本: %s\n", pageVersion)
 	err := http.ListenAndServe(":8087", nil)
 	if err != nil {
 		fmt.Printf("Web服务启动异常: %v\n", err)
