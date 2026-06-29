@@ -1,14 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"html/template"
 	"net/http"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 )
 
@@ -23,7 +21,7 @@ type AirUPnP struct {
 	MaxPlayers int      `xml:"max_players"`
 	Binding    string   `xml:"binding"`
 	Ports      string   `xml:"ports"`
-	Devices    []Device `xml:"devices>device"`
+	Devices    []Device `xml:"device"`
 }
 
 type Common struct {
@@ -46,14 +44,6 @@ type Device struct {
 	Enabled int    `xml:"enabled"`
 }
 
-// 新增Mac字段用于前端精准匹配
-type DevStatus struct {
-	UDN     string `json:"udn"`
-	Name    string `json:"name"`
-	Mac     string `json:"mac"`
-	Playing bool   `json:"playing"`
-}
-
 const configPath = "/config/config.xml"
 
 const htmlTemplate = `
@@ -62,9 +52,9 @@ const htmlTemplate = `
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AirConnect设置面板</title>
+    <title>AirConnect设置</title>
     <style>
-        * {box-sizing:border-box; margin:0; padding:0; font-family:system-ui, sans-serif;}
+        * {box-sizing:border-box; margin:0; padding:0; font-family:Arial, sans-serif;}
         body {
             background:#f5f7fa;
             padding:12px;
@@ -73,20 +63,20 @@ const htmlTemplate = `
             font-size:14px;
         }
         .card {
-            background:#fff;
+            background:white;
             padding:16px;
             border-radius:12px;
             margin-bottom:16px;
-            box-shadow:0 2px 12px rgba(0,0,0,0.06);
+            box-shadow:0 2px 12px rgba(0,0,0,0.08);
         }
         h1 {
-            color:#1f2937;
+            color:#2d3748;
             margin-bottom:20px;
             text-align:center;
             font-size:20px;
         }
         h2 {
-            color:#374151;
+            color:#4a5568;
             margin:16px 0 10px;
             font-size:15px;
             border-left:4px solid #3498db;
@@ -102,7 +92,7 @@ const htmlTemplate = `
         }
         .name-text {
             font-size:14px;
-            color:#1f2937;
+            color:#2d3748;
             font-weight:500;
             cursor:pointer;
             flex:1;
@@ -115,31 +105,17 @@ const htmlTemplate = `
             border-radius:4px;
             outline:none;
         }
-        .status-text {
-            font-size:12px;
-            padding:2px 6px;
-            border-radius:6px;
-            flex-shrink:0;
-        }
-        .playing {
-            background:#dcfce7;
-            color:#16a34a;
-        }
-        .idle {
-            background:#f3f4f6;
-            color:#6b7280;
-        }
         .save {
             width:100%;
             background:#3498db;
-            color:#fff;
+            color:white;
             border:none;
             padding:14px;
             border-radius:10px;
             font-size:16px;
             margin-top:16px;
             cursor:pointer;
-            font-weight:500;
+            font-weight:bold;
             min-height:48px;
         }
         .save:hover {background:#2980b9;}
@@ -147,12 +123,12 @@ const htmlTemplate = `
         .msg {
             text-align:center;
             margin:12px 0;
-            font-weight:500;
-            transition:opacity 0.8s ease;
+            font-weight:bold;
+            transition: opacity 0.8s ease;
             font-size:14px;
         }
-        .msg.success {color:#16a34a;}
-        .msg.error {color:#dc2626;}
+        .msg.success {color:#27ae60;}
+        .msg.error {color:#e74c3c;}
         .msg.fade-out {opacity:0;}
         .toggle {
             position:relative;
@@ -176,7 +152,7 @@ const htmlTemplate = `
             width:18px;
             left:3px;
             bottom:3px;
-            background:#fff;
+            background:white;
             transition:.3s;
             border-radius:50%;
         }
@@ -184,7 +160,7 @@ const htmlTemplate = `
         input:checked + .slider:before {transform:translateX(22px);}
         .version {
             text-align:center;
-            color:#9ca3af;
+            color:#999;
             font-size:11px;
             margin-top:14px;
         }
@@ -205,26 +181,23 @@ const htmlTemplate = `
         <form id="configForm" method="post">
             <h2>🌍 全局转换</h2>
             <div class="item">
-                <span class="name-text">扫描启用</span>
+                <span class="name-text">扫描开关</span>
                 <label class="toggle">
                     <input id="global_enabled" type="checkbox" name="global_enabled" {{if eq .Config.Common.Enabled 1}}checked{{end}}>
                     <span class="slider"></span>
                 </label>
             </div>
             <h2>🎵 音箱分控</h2>
-            <div id="devListWrap">
             {{range $index, $device := .Config.Devices}}
-            <div class="item" data-index="{{$index}}" data-mac="{{$device.Mac}}">
+            <div class="item" data-index="{{$index}}">
                 <span class="name-text" data-idx="{{$index}}">{{$device.Name}}</span>
                 <input type="hidden" name="device_name_{{$index}}" class="hidden-name" value="{{$device.Name}}">
-                <span class="status-text idle">空闲</span>
                 <label class="toggle">
                     <input class="device-checkbox" data-index="{{$index}}" type="checkbox" name="device_{{$index}}" {{if eq $device.Enabled 1}}checked{{end}}>
                     <span class="slider"></span>
                 </label>
             </div>
             {{end}}
-            </div>
             <button id="submitBtn" class="save" type="submit">💾 保存并重启生效</button>
         </form>
     </div>
@@ -238,7 +211,6 @@ let originState = {
 };
 const submitBtn = document.getElementById('submitBtn');
 const formWrap = document.getElementById('configForm');
-let statusTimer = null;
 
 window.addEventListener('DOMContentLoaded', function(){
     // 提示3秒自动淡出
@@ -253,7 +225,7 @@ window.addEventListener('DOMContentLoaded', function(){
     // 初始化原始开关+名称快照
     const globalInput = document.getElementById('global_enabled');
     originState.global = globalInput.checked;
-    const deviceItems = document.querySelectorAll('.item[data-mac]');
+    const deviceItems = document.querySelectorAll('.item[data-index]');
     deviceItems.forEach(item=>{
         const idx = item.dataset.index;
         const check = item.querySelector('.device-checkbox');
@@ -262,7 +234,7 @@ window.addEventListener('DOMContentLoaded', function(){
         originState.names.push(nameVal);
     })
 
-    // 事件委托：无限次点击修改音箱名称
+    // ========== 修复：事件委托，无限次点击编辑 ==========
     formWrap.addEventListener('click', function(e){
         const textSpan = e.target.closest('.name-text');
         if(!textSpan) return;
@@ -270,6 +242,7 @@ window.addEventListener('DOMContentLoaded', function(){
         const parent = textSpan.parentElement;
         const hiddenInput = parent.querySelector('.hidden-name');
         const currentVal = hiddenInput.value;
+
         const input = document.createElement('input');
         input.className = 'name-input';
         input.value = currentVal;
@@ -288,35 +261,7 @@ window.addEventListener('DOMContentLoaded', function(){
         input.focus();
     })
 
-    // 修复：纯MAC匹配，不再对比名称，改名不影响状态识别
-    function refreshDeviceStatus() {
-        fetch('/status', {cache:"no-store", signal: AbortSignal.timeout(2000)})
-        .then(res=>res.json())
-        .then(statusList=>{
-            // 构建mac映射表，一次遍历
-            const macMap = {};
-            statusList.forEach(d=>{
-                macMap[d.Mac] = d.Playing;
-            })
-            // 遍历页面设备匹配
-            document.querySelectorAll('.item[data-mac]').forEach(item=>{
-                const mac = item.dataset.mac;
-                const statusSpan = item.querySelector('.status-text');
-                const playing = macMap[mac] || false;
-                if(playing){
-                    statusSpan.className = "status-text playing";
-                    statusSpan.textContent = "播放";
-                }else{
-                    statusSpan.className = "status-text idle";
-                    statusSpan.textContent = "空闲";
-                }
-            })
-        })
-        .catch(()=>{});
-    }
-    statusTimer = setInterval(refreshDeviceStatus, 2000);
-
-    // 异步提交表单
+    // 表单异步提交逻辑
     const form = document.getElementById('configForm');
     form.addEventListener('submit', async function(e){
         e.preventDefault();
@@ -339,16 +284,14 @@ window.addEventListener('DOMContentLoaded', function(){
         }
 
         if(!isChanged){
-            alert("未检测到配置修改，无需保存。");
+            alert("未检测到任何配置修改，无需保存。");
             return;
         }
-        const confirmSave = confirm("确认保存并重启服务？页面会短暂断开。");
+        const confirmSave = confirm("确认保存配置并重启服务？重启后页面会短暂断开。");
         if(!confirmSave) return;
 
         submitBtn.disabled = true;
-        submitBtn.textContent = "⏳ 保存中，等待重启...";
-        clearInterval(statusTimer); // 停止状态轮询
-
+        submitBtn.textContent = "⏳ 保存中，等待服务重启...";
         const formData = new FormData(form);
         try {
             await fetch('/', {
@@ -356,7 +299,6 @@ window.addEventListener('DOMContentLoaded', function(){
                 body: formData,
                 signal: AbortSignal.timeout(5000)
             });
-            // 循环检测服务恢复
             function tryReload() {
                 fetch('/', {cache:"no-store", signal: AbortSignal.timeout(1500)})
                 .then(()=>location.href = "/")
@@ -364,10 +306,9 @@ window.addEventListener('DOMContentLoaded', function(){
             }
             setTimeout(tryReload, 800);
         } catch (err) {
-            alert("保存请求异常，请重试。");
+            alert("保存请求异常，请稍后重试");
             submitBtn.disabled = false;
             submitBtn.textContent = "💾 保存并重启生效";
-            statusTimer = setInterval(refreshDeviceStatus, 2000);
         }
     });
 });
@@ -383,150 +324,73 @@ type PageData struct {
 	Version string
 }
 
-// loadConfig 每次页面访问实时读取磁盘配置
 func loadConfig() (*AirUPnP, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, err
 	}
-	var cfg AirUPnP
-	err = xml.Unmarshal(data, &cfg)
-	return &cfg, err
+	var config AirUPnP
+	err = xml.Unmarshal(data, &config)
+	return &config, err
 }
 
-func saveConfig(cfg *AirUPnP) error {
-	data, err := xml.MarshalIndent(cfg, "", "  ")
+func saveConfig(config *AirUPnP) error {
+	data, err := xml.MarshalIndent(config, "", "  ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(configPath, append([]byte(xml.Header), data...), 0644)
 }
 
-// 异步延迟重启s6，不阻塞http响应
+// 异步延迟重启，不阻塞HTTP响应
 func restartContainer() {
-	fmt.Println("延迟500ms重载s6服务")
+	fmt.Println("触发全容器服务重载，延迟500ms执行重启")
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		cmd := exec.Command("pkill", "-f", "s6-svscan")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			fmt.Printf("重启错误: %v, output: %s\n", err, string(out))
+			fmt.Printf("重载触发日志: err=%v, output=%s\n", err, string(out))
 		}
 	}()
 }
 
-// /status 接口：自动解析日志mac→句柄，返回携带Mac用于前端匹配
-func statusHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json;charset=utf-8")
-	conf, err := loadConfig()
-	if err != nil {
-		_ = json.NewEncoder(w).Encode([]DevStatus{})
-		return
-	}
-
-	var fullLog string
-	// 获取airupnp-docker进程控制台输出
-	pidCmd := exec.Command("pgrep", "-f", "airupnp-docker")
-	pidOut, pidErr := pidCmd.CombinedOutput()
-	if pidErr == nil && len(pidOut) > 0 {
-		pid := strings.TrimSpace(string(pidOut))
-		tailCmd := exec.Command("tail", "-n", "500", "/proc/"+pid+"/fd/1")
-		tailOut, tailErr := tailCmd.CombinedOutput()
-		if tailErr == nil {
-			fullLog = string(tailOut)
-		}
-	}
-
-	// 自动解析AddMRDevice行，建立 mac => 设备句柄 映射
-	macToHandle := make(map[string]string)
-	lines := strings.Split(fullLog, "\n")
-	for _, line := range lines {
-		if strings.Contains(line, "AddMRDevice") && strings.Contains(line, "with mac") {
-			// 提取句柄 [0xffffxxxx]
-			handleStart := strings.Index(line, "[0x")
-			if handleStart == -1 {
-				continue
-			}
-			handleEnd := strings.Index(line[handleStart:], "]") + handleStart
-			handle := line[handleStart : handleEnd+1]
-			// 提取mac地址
-			macMarker := "with mac "
-			macPos := strings.LastIndex(line, macMarker)
-			if macPos == -1 {
-				continue
-			}
-			mac := strings.TrimSpace(line[macPos+len(macMarker):])
-			macToHandle[mac] = handle
-		}
-	}
-
-	var result []DevStatus
-	for _, dev := range conf.Devices {
-		isPlay := false
-		mac := dev.Mac
-		handle, exist := macToHandle[mac]
-		if fullLog != "" && exist && strings.Contains(fullLog, handle) {
-			// 播放标记
-			hasPlay := strings.Contains(fullLog, "uPNP playing") ||
-				strings.Contains(fullLog, "received RECORD") ||
-				strings.Contains(fullLog, "received metadata") ||
-				strings.Contains(fullLog, "received JPEG image")
-			// 停止标记
-			hasStop := strings.Contains(fullLog, "TEARDOWN") ||
-				strings.Contains(fullLog, "uPNP stopped") ||
-				strings.Contains(fullLog, "uPNP stop") ||
-				strings.Contains(fullLog, "Stop")
-			if hasPlay && !hasStop {
-				isPlay = true
-			}
-		}
-		result = append(result, DevStatus{
-			UDN:     dev.UDN,
-			Name:    dev.Name,
-			Mac:     dev.Mac, // 新增MAC返回前端用于匹配
-			Playing: isPlay,
-		})
-	}
-	_ = json.NewEncoder(w).Encode(result)
-}
-
-// 主页面板渲染
-func pageHandler(w http.ResponseWriter, r *http.Request, pageVer string) {
+func handler(w http.ResponseWriter, r *http.Request, pageVer string) {
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
 
-	conf, err := loadConfig()
+	config, err := loadConfig()
 	if err != nil {
-		http.Error(w, "读取配置文件失败", 500)
+		http.Error(w, "加载配置失败", 500)
 		return
 	}
 
 	msg := ""
 	msgType := ""
 	if r.Method == http.MethodPost {
-		// 全局开关
 		if r.PostFormValue("global_enabled") != "" {
-			conf.Common.Enabled = 1
+			config.Common.Enabled = 1
 		} else {
-			conf.Common.Enabled = 0
+			config.Common.Enabled = 0
 		}
-		// 遍历设备同步开关与自定义名称
-		for i := range conf.Devices {
+
+		for i := range config.Devices {
 			ckKey := fmt.Sprintf("device_%d", i)
 			nameKey := fmt.Sprintf("device_name_%d", i)
 			if r.PostFormValue(ckKey) != "" {
-				conf.Devices[i].Enabled = 1
+				config.Devices[i].Enabled = 1
 			} else {
-				conf.Devices[i].Enabled = 0
+				config.Devices[i].Enabled = 0
 			}
 			newName := r.PostFormValue(nameKey)
 			if newName != "" {
-				conf.Devices[i].Name = newName
+				config.Devices[i].Name = newName
 			}
 		}
-		errSave := saveConfig(conf)
-		if errSave != nil {
+
+		err := saveConfig(config)
+		if err != nil {
 			msg = "❌ 保存失败"
 			msgType = "error"
 		} else {
@@ -540,10 +404,10 @@ func pageHandler(w http.ResponseWriter, r *http.Request, pageVer string) {
 		http.Error(w, "模板解析失败: "+err.Error(), 500)
 		return
 	}
-	_ = tpl.Execute(w, PageData{
-		MsgType: msgType,
+	tpl.Execute(w, PageData{
+		Config:  config,
 		Msg:     msg,
-		Config:  conf,
+		MsgType: msgType,
 		Version: pageVer,
 	})
 }
@@ -553,15 +417,13 @@ func main() {
 	if pageVersion == "" {
 		pageVersion = "dev"
 	}
-	// 注册路由
-	http.HandleFunc("/status", statusHandler)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		pageHandler(w, r, pageVersion)
+		handler(w, r, pageVersion)
 	})
-	fmt.Printf("Web面板启动 :8087 | 版本=%s\n", pageVersion)
+	fmt.Printf("WebUI 已启动 :8087 | 当前版本: %s\n", pageVersion)
 	err := http.ListenAndServe(":8087", nil)
 	if err != nil {
-		fmt.Printf("服务启动异常: %v\n", err)
+		fmt.Printf("Web服务启动异常: %v\n", err)
 		os.Exit(1)
 	}
 }
