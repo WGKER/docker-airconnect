@@ -49,8 +49,10 @@ RUN if [ "$ARCH_VAR" = "amd64" ]; then ARCH_VAR=linux-x86_64; elif [ "$ARCH_VAR"
     && chmod +x /usr/bin/airupnp-docker /usr/bin/aircast-docker \
     && rm -rf /tmp/* airconnect.zip
 
-# 给web服务启动脚本授权（修复路径缺少/的bug）
-RUN chmod +x /etc/s6-overlay/s6-rc.d/web/run
+# 统一授权web服务全部配置文件
+RUN chmod +x /etc/s6-overlay/s6-rc.d/web/run \
+    && chmod 644 /etc/s6-overlay/s6-rc.d/web/type \
+    && chmod 644 /etc/s6-overlay/s6-rc.d/web/dependencies
 
 EXPOSE 8087
 ENTRYPOINT ["/init"]
