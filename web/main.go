@@ -128,15 +128,28 @@ func saveConfig(config *AirUPnP) error {
 	return os.WriteFile(configPath, append([]byte(xml.Header), data...), 0644)
 }
 
-// ✅ 官方镜像原生重启命令（100% 适配 /init s6-rc）
+// 修复版：拆分 stop + start，替代不存在的 s6-rc restart
 func restartAirConnect() {
-	time.Sleep(1 * time.Second)
-	cmd := exec.Command("s6-rc", "restart", "airupnp")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Printf("重启airupnp失败: %v, 输出: %s\n", err, string(output))
+	fmt.Println("开始执行 airupnp 重启流程")
+	// 1. 停止服务
+	cmdStop := exec.Command("s6-rc", "stop", "airupnp")
+	stopOut, stopErr := cmdStop.CombinedOutput()
+	if stopErr != nil {
+		fmt.Printf("停止airupnp失败: %v, 输出:%s\n", stopErr, string(stopOut))
 	} else {
-		fmt.Println("airupnp服务重启成功")
+		fmt.Println("airupnp 停止成功")
+	}
+
+	// 等待进程完全退出
+	time.Sleep(800 * time.Millisecond)
+
+	// 2. 启动服务
+	cmdStart := exec.Command("s6-rc", "start", "airupnp")
+	startOut, startErr := cmdStart.CombinedOutput()
+	if startErr != nil {
+		fmt.Printf("启动airupnp失败: %v, 输出:%s\n", startErr, string(startOut))
+	} else {
+		fmt.Println("airupnp 重启完成")
 	}
 }
 
@@ -169,7 +182,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			msg = "❌ 保存失败"
 		} else {
 			msg = "✅ 保存成功，服务已自动重启生效"
-			go restartAirConnect()
+			restartAirConnect()
 		}
 	}
 
