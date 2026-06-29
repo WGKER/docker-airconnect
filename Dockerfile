@@ -20,11 +20,11 @@ COPY /src /app
 
 # ========== 编译Go Web管理程序 ==========
 # 复制Go源码到临时目录编译
-COPY ./webgo /tmp/webgo
-RUN cd /tmp/webgo \
-    && CGO_ENABLED=0 GOARCH=$ARCH_VAR go build -o /app/webadmin \
-    && chmod +x /app/webadmin \
-    && rm -rf /tmp/webgo
+COPY ./web /tmp/web
+RUN cd /tmp/web \
+    && CGO_ENABLED=0 GOARCH=$ARCH_VAR go build -o /app/web \
+    && chmod +x /app/web \
+    && rm -rf /tmp/web
 
 # Grab latest version of the app, extract binaries, cleanup tmp dir
 RUN if [ "$ARCH_VAR" = "amd64" ]; then ARCH_VAR=linux-x86_64; elif [ "$ARCH_VAR" = "arm64" ]; then ARCH_VAR=linux-aarch64; fi \
@@ -38,7 +38,7 @@ RUN if [ "$ARCH_VAR" = "amd64" ]; then ARCH_VAR=linux-x86_64; elif [ "$ARCH_VAR"
     && rm airconnect.zip
 
 # 赋予web服务脚本执行权限
-RUN chmod +x /etc/services.d/webadmin/run
+RUN chmod +x /etc/services.d/web/run
 
 # 对外声明8087端口（docker run -p 8087:8087 映射）
 EXPOSE 8087
