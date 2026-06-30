@@ -77,10 +77,14 @@ const htmlTemplate = `
         }
         h2 {
             color:#4a5568;
-            margin:30px 0 10px;
+            margin:50px 0 10px;
             font-size:15px;
             border-left:4px solid #3498db;
             padding-left:8px;
+        }
+		 /* 单独给音箱分控标题加更大上边距，区分两个h2 */
+        h2.device-title {
+            margin-top: 30px;
         }
         .item {
             display:flex;
@@ -113,7 +117,7 @@ const htmlTemplate = `
             padding:14px;
             border-radius:10px;
             font-size:16px;
-            margin-top:16px;
+            margin-top:30px;
             cursor:pointer;
             font-weight:bold;
             min-height:48px;
@@ -169,7 +173,9 @@ const htmlTemplate = `
             .card {padding:14px; border-radius:10px;}
             h1 {font-size:18px;}
             .item {padding:10px 4px;}
-			h2 {margin:30px 0 10px;}
+			h2 {margin:50px 0 10px;}
+			h2.device-title {margin-top: 30px;}
+            .save {margin-top:30px;}
         }
     </style>
 </head>
