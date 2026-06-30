@@ -169,6 +169,7 @@ const htmlTemplate = `
             .card {padding:14px; border-radius:10px;}
             h1 {font-size:18px;}
             .item {padding:10px 4px;}
+			h2 {margin:30px 0 10px;}
         }
     </style>
 </head>
