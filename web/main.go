@@ -77,7 +77,7 @@ const htmlTemplate = `
         }
         h2 {
             color:#4a5568;
-            margin:16px 0 10px;
+            margin:30px 0 10px;
             font-size:15px;
             border-left:4px solid #3498db;
             padding-left:8px;
