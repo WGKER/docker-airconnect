@@ -1,8 +1,8 @@
 name: Multi-Arch Build - Master（打包本地下载）
 
 on:
-  schedule:
-    - cron: '0 2 * * 6'
+#  schedule:
+#    - cron: '0 2 * * 6'
   workflow_dispatch:
     inputs:
       VERSION:
