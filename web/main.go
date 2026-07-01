@@ -64,7 +64,7 @@ const htmlTemplate = `
         }
         .card {
             background:white;
-            padding:16px;
+            padding:30px 50px 30px;
             border-radius:12px;
             margin-bottom:16px;
             box-shadow:0 2px 12px rgba(0,0,0,0.08);
@@ -82,7 +82,6 @@ const htmlTemplate = `
             border-left:4px solid #3498db;
             padding-left:8px;
         }
-		 /* 单独给音箱分控标题加更大上边距，区分两个h2 */
         h2.device-title {
             margin-top: 30px;
         }
@@ -109,18 +108,22 @@ const htmlTemplate = `
             border-radius:4px;
             outline:none;
         }
+        .save-wrap {
+            text-align:center;
+            margin-top:30px;
+        }
         .save {
-            width:100%;
             background:#3498db;
             color:white;
             border:none;
-            padding:14px;
+            padding:14px 28px;
             border-radius:10px;
-            font-size:16px;
-            margin-top:30px;
+            font-size:15px;
             cursor:pointer;
             font-weight:bold;
             min-height:48px;
+            /* 取消100%宽度，自适应文字 */
+            width:auto;
         }
         .save:hover {background:#2980b9;}
         .save:disabled {background:#94b8d8; cursor:not-allowed;}
@@ -165,17 +168,18 @@ const htmlTemplate = `
         .version {
             text-align:center;
             color:#999;
-            font-size:11px;
-            margin-top:14px;
+            font-size:12px;
+            margin-top:30px;
         }
         @media (max-width:480px) {
             body {padding:8px;}
-            .card {padding:14px; border-radius:10px;}
+            .card {padding:30px 50px 30px; border-radius:10px;}
             h1 {font-size:18px;}
             .item {padding:10px 4px;}
-			h2 {margin:50px 0 10px;}
-			h2.device-title {margin-top: 30px;}
-            .save {margin-top:30px;}
+            h2 {margin:50px 0 10px;}
+            h2.device-title {margin-top: 30px;}
+            .save-wrap {margin-top:30px;}
+            .save {padding:12px 20px;}
         }
     </style>
 </head>
@@ -194,7 +198,7 @@ const htmlTemplate = `
                     <span class="slider"></span>
                 </label>
             </div>
-            <h2>🎵 音箱分控</h2>
+            <h2 class="device-title">🎵 音箱分控</h2>
             {{range $index, $device := .Config.Devices}}
             <div class="item" data-index="{{$index}}">
                 <span class="name-text" data-idx="{{$index}}">{{$device.Name}}</span>
@@ -205,7 +209,10 @@ const htmlTemplate = `
                 </label>
             </div>
             {{end}}
-            <button id="submitBtn" class="save" type="submit">💾 保存并重启生效</button>
+            <!-- 外层包裹div实现居中 -->
+            <div class="save-wrap">
+                <button id="submitBtn" class="save" type="submit">💾 保存并重启生效</button>
+            </div>
         </form>
     </div>
     <div class="version">AirConnect 版本：{{.Version}}</div>
@@ -220,7 +227,6 @@ const submitBtn = document.getElementById('submitBtn');
 const formWrap = document.getElementById('configForm');
 
 window.addEventListener('DOMContentLoaded', function(){
-    // 提示3秒自动淡出
     const msgBox = document.querySelector('.msg');
     if(msgBox){
         setTimeout(()=>{
@@ -229,7 +235,6 @@ window.addEventListener('DOMContentLoaded', function(){
         }, 3000);
     }
 
-    // 初始化原始开关+名称快照
     const globalInput = document.getElementById('global_enabled');
     originState.global = globalInput.checked;
     const deviceItems = document.querySelectorAll('.item[data-index]');
@@ -241,7 +246,6 @@ window.addEventListener('DOMContentLoaded', function(){
         originState.names.push(nameVal);
     })
 
-    // ========== 修复：事件委托，无限次点击编辑 ==========
     formWrap.addEventListener('click', function(e){
         const textSpan = e.target.closest('.name-text');
         if(!textSpan) return;
@@ -268,7 +272,6 @@ window.addEventListener('DOMContentLoaded', function(){
         input.focus();
     })
 
-    // 表单异步提交逻辑
     const form = document.getElementById('configForm');
     form.addEventListener('submit', async function(e){
         e.preventDefault();
@@ -291,10 +294,10 @@ window.addEventListener('DOMContentLoaded', function(){
         }
 
         if(!isChanged){
-            alert("没有修改，无需保存。");
+            alert("未检测到任何配置修改，无需保存。");
             return;
         }
-        const confirmSave = confirm("确认保存并重启？\n页面会短暂断开。");
+        const confirmSave = confirm("确认保存配置并重启服务？重启后页面会短暂断开。");
         if(!confirmSave) return;
 
         submitBtn.disabled = true;
@@ -313,7 +316,7 @@ window.addEventListener('DOMContentLoaded', function(){
             }
             setTimeout(tryReload, 800);
         } catch (err) {
-            alert("保存异常，稍后重试。");
+            alert("保存请求异常，请稍后重试");
             submitBtn.disabled = false;
             submitBtn.textContent = "💾 保存并重启生效";
         }
