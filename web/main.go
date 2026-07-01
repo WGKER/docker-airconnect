@@ -122,7 +122,6 @@ const htmlTemplate = `
             cursor:pointer;
             font-weight:bold;
             min-height:48px;
-            /* 取消100%宽度，自适应文字 */
             width:auto;
         }
         .save:hover {background:#2980b9;}
@@ -209,7 +208,6 @@ const htmlTemplate = `
                 </label>
             </div>
             {{end}}
-            <!-- 外层包裹div实现居中 -->
             <div class="save-wrap">
                 <button id="submitBtn" class="save" type="submit">💾 保存并重启生效</button>
             </div>
