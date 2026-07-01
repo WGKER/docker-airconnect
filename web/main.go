@@ -295,7 +295,7 @@ window.addEventListener('DOMContentLoaded', function(){
             alert("没有修改，无需保存。");
             return;
         }
-        const confirmSave = confirm("确认保存配置并重启服务？\n重启后页面会短暂断开。");
+        const confirmSave = confirm("确认保存并重启？\n页面会短暂断开。");
         if(!confirmSave) return;
 
         submitBtn.disabled = true;
@@ -314,7 +314,7 @@ window.addEventListener('DOMContentLoaded', function(){
             }
             setTimeout(tryReload, 800);
         } catch (err) {
-            alert("保存异常，稍后重试");
+            alert("保存异常，稍后重试。");
             submitBtn.disabled = false;
             submitBtn.textContent = "💾 保存并重启生效";
         }
