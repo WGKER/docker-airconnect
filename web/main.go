@@ -64,7 +64,7 @@ const htmlTemplate = `
         }
         .card {
             background:white;
-            padding:30px 50px 30px;
+            padding:30px 30px 30px;
             border-radius:12px;
             margin-bottom:16px;
             box-shadow:0 2px 12px rgba(0,0,0,0.08);
@@ -173,7 +173,7 @@ const htmlTemplate = `
         }
         @media (max-width:480px) {
             body {padding:8px;}
-            .card {padding:30px 50px 30px; border-radius:10px;}
+            .card {padding:30px 30px 30px; border-radius:10px;}
             h1 {font-size:18px;}
             .item {padding:10px 4px;}
             h2 {margin:50px 0 10px;}
