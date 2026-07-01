@@ -52,7 +52,7 @@ const htmlTemplate = `
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AirConnect设置</title>
+    <title>AirConnect管理面板</title>
     <style>
         * {box-sizing:border-box; margin:0; padding:0; font-family:Arial, sans-serif;}
         body {
@@ -77,7 +77,7 @@ const htmlTemplate = `
         }
         h2 {
             color:#4a5568;
-            margin:50px 0 10px;
+            margin:30px 0 10px;
             font-size:15px;
             border-left:4px solid #3498db;
             padding-left:8px;
@@ -175,7 +175,7 @@ const htmlTemplate = `
             .card {padding:30px 30px 30px; border-radius:10px;}
             h1 {font-size:18px;}
             .item {padding:10px 4px;}
-            h2 {margin:50px 0 10px;}
+            h2 {margin:30px 0 10px;}
             h2.device-title {margin-top: 30px;}
             .save-wrap {margin-top:30px;}
             .save {padding:12px 20px;}
