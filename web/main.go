@@ -189,7 +189,7 @@ const htmlTemplate = `
         <div class="msg {{.MsgType}}">{{.Msg}}</div>
         {{end}}
         <form id="configForm" method="post">
-            <h2>🌍 全局转换</h2>
+            <h2>🌍 全局扫描</h2>
             <div class="item">
                 <span class="name-text">扫描开关</span>
                 <label class="toggle">
@@ -292,10 +292,10 @@ window.addEventListener('DOMContentLoaded', function(){
         }
 
         if(!isChanged){
-            alert("未检测到任何配置修改，无需保存。");
+            alert("没有修改，无需保存。");
             return;
         }
-        const confirmSave = confirm("确认保存配置并重启服务？重启后页面会短暂断开。");
+        const confirmSave = confirm("确认保存配置并重启服务？\n重启后页面会短暂断开。");
         if(!confirmSave) return;
 
         submitBtn.disabled = true;
@@ -314,7 +314,7 @@ window.addEventListener('DOMContentLoaded', function(){
             }
             setTimeout(tryReload, 800);
         } catch (err) {
-            alert("保存请求异常，请稍后重试");
+            alert("保存异常，稍后重试");
             submitBtn.disabled = false;
             submitBtn.textContent = "💾 保存并重启生效";
         }
